@@ -27,3 +27,13 @@ class ApiResponseNotOk(Exception):
         self.response = response
         self.status_code = status_code
         super().__init__(f"Response not OK, status {status_code}, message {self.response}")
+
+
+class TaskNotDoneException(Exception):
+    def __init__(self, name):
+        super().__init__(f"task {name} in not done, cannot put undone task to exc_dict")
+
+
+class NotOptional(Exception):
+    def __init__(self, field_name):
+        super().__init__(f"Field {field_name} is not optional and not indexed. All not indexed fields should be optional")

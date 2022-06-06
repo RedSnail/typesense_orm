@@ -7,15 +7,10 @@ from datetime import datetime, timedelta
 from .logging import logger
 from .exceptions import NoHealthyNode, ApiResponseNotOk
 from functools import wraps
-from abc import ABC, abstractmethod, abstractproperty, abstractclassmethod, ABCMeta
+from abc import ABC, abstractmethod
 from pydantic.main import ModelMetaclass
-from gc import get_referrers
 import inspect
-import dis
-import traceback
-from itertools import islice
-from dis import dis
-from gc import get_referrers
+from .exception_dict import ExceptionDict
 
 
 class Node(BaseModel):
@@ -28,12 +23,33 @@ T = TypeVar("T")
 V = TypeVar("V")
 
 
-def wrap_task(func):
+def wrap_task(func: Callable[..., Awaitable[Any]]):
+    """
+    A decorator for async functions that creates task from a coroutine.
+    Args:
+        func (): a callback function
+
+    Returns:
+
+    """
+    @wraps(func)
     def wrapper(self: Cl, *args, schedule=True, name=None, **kwargs):
+        """
+
+        Args:
+            self (ApiCaller): a caller instance *args (): other positional arguments passed to function
+            schedule (bool): whether a caller instance should memorize a task so that it results could be retrieved with
+            ApiCaller.wait_all()
+            name (str): A name for the newly-created task
+            **kwargs (): other kwargs passed to a  callback function
+
+        Returns:
+            asyncio.Task: a task in a caller loop which was created.
+
+        """
+        print(f"created task {name}")
         task = self.loop.create_task(func(self, *args, **kwargs), name=name)
         if schedule:
-            logger.debug("-------------------------------")
-            logger.debug("task scheduled")
             self.tasks.append(task)
 
         return task
@@ -41,7 +57,15 @@ def wrap_task(func):
     return wrapper
 
 
-def retry(do_after_retries: Callable[[Cl], None]):
+def retry(do_after_retries: Callable[[Cl], Any]):
+    """
+    A decorator to retry connection several times.
+    Args:
+        do_after_retries (): a callback that is applied when retries fail
+
+    Returns:
+
+    """
     def decorator(func):
         @wraps(func)
         async def wrapper(self: Cl, *args, **kwargs):
@@ -68,6 +92,10 @@ def retry(do_after_retries: Callable[[Cl], None]):
 
 
 class MethodAssigner(type):
+    """
+    A metaclass for api callers, I have no wish to implement all request methods separately, so I've created a factory,
+    and this metaclass implements it.
+    """
     def __new__(mcs, *args, **kwargs):
         ret: Type[ApiCaller] = super().__new__(mcs, *args, **kwargs)
         sync = ret.sync()
@@ -88,10 +116,25 @@ class ApiCallerMetaclass(MethodAssigner, ModelMetaclass, Generic[V]):
 
 
 def no_healthy_node(self: Cl):
+    """
+    A callback which is implemented when ho healthy node is found.
+    Args:
+        self (ApiCaller): a caller which implements a callback
+
+    Raises:
+        NoHealthyNode: an exception which occurs when there is no healthy nodes.
+
+    """
     raise NoHealthyNode(f"No node has responded after {self.num_retries} retries")
 
 
 def nearest_node_unhealthy(self: Cl):
+    """
+    A callback which is applied when the nearest node is unhealthy, and caller has to select a new one.
+    Args:
+        self (ApiCaller):
+
+    """
     logger.info("current node is unhealthy")
     self.nearest_node = None
     self.loop.run_until_complete(self.session.close())
@@ -99,13 +142,15 @@ def nearest_node_unhealthy(self: Cl):
 
 
 def request_factory(method: Callable[..., Awaitable[aiohttp.ClientResponse]], sync: bool):
-    async def do_async(self: Cl, url, handler: Callable[[Dict[str, Any]], T] = lambda a: a, name=None, **kwargs):
-        async with await method(self.session, url, **kwargs) as r:
-            json = await r.json()
-            if r.status < 200 or r.status >= 300:
-                raise ApiResponseNotOk(json, r.status)
-            return handler(json)
+    """
+    A factory for request functions
+    Args:
+        method (): a coroutine function which implements the call
+        sync (bool): whether an output function return a task or a ready result
 
+    Returns:
+
+    """
     @wraps(method)
     @wrap_task
     @retry(nearest_node_unhealthy)
@@ -113,6 +158,18 @@ def request_factory(method: Callable[..., Awaitable[aiohttp.ClientResponse]], sy
                            handler: Callable[[Dict[str, Any]], T] = lambda a: a,
                            **kwargs) \
             -> Awaitable[T]:
+        """
+        Make a request and handle a response asynchronously
+        Args:
+            self (ApiCaller): a caller instance
+            url (str): url endpoint to make request
+            handler (): a callback function which is used to handle response as json
+            **kwargs (): additional keyword arguments passed to the request function.
+
+        Returns:
+            asyncio.Coroutine
+
+        """
         async with await method(self.session, url, **kwargs) as r:
             json = await r.json()
             if r.status < 200 or r.status >= 300:
@@ -126,6 +183,13 @@ def request_factory(method: Callable[..., Awaitable[aiohttp.ClientResponse]], sy
                               schedule=False,
                               name=None,
                               **kwargs) -> T:
+            """
+            Make the same as make_request in a synchronized manner
+
+            Notes:
+                you can still add a callback handler and make a caller to memorize the results.
+
+            """
             return self.loop.run_until_complete(make_request(self, url,
                                                              handler=handler,
                                                              schedule=schedule,
@@ -142,6 +206,20 @@ API_KEY_HEADER_NAME = 'X-TYPESENSE-API-KEY'
 
 
 class ApiCaller(ABC, BaseModel):
+    """
+    A base class for api callers.
+    Attributes:
+        api_key (str): An api key to make the requests
+        nodes (list of Node): a list of nodes that this caller can use.
+        connection_timeout(timedelta): connection timeout
+        num_retries (int): number of retries it makes before considers node unhealthy.
+        retry_interval (timedelta): retry interval
+        healthcheck_interval (timedelta): interval after unsuccessful healthcheck before the next one
+        nearest_node: (Node): a nearest node which is used by caller.
+        loop: (asyncio.AbstractEventLoop): an event loop which is used by caller to perform tasks (synchronous caller either uses it)
+        tasks: (list of Task): tasks which results can currently be retrieved by ApiCaller.wait_for_all()
+        session: (aiohttp.ClientSession or None): aiohttp client session used by caller.
+    """
     api_key: str
     nodes: Sequence[Node]
     connection_timeout: timedelta = Field(timedelta(seconds=3))
@@ -189,35 +267,45 @@ class ApiCaller(ABC, BaseModel):
         sel_session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.connection_timeout.seconds))
         self.nearest_node = await self.select_new_node(sel_session)
         await sel_session.close()
-        logger.info("establishing new session")
         self.session = aiohttp.ClientSession(self.nearest_node.url,
                                              timeout=aiohttp.ClientTimeout(total=self.connection_timeout.seconds),
                                              headers={API_KEY_HEADER_NAME: self.api_key})
 
-    def wait_all(self):
-        logger.debug("+++++++++++++++++++++++")
-        logger.debug(self.tasks)
-        names = list(map(lambda task: task.get_name(), self.tasks))
-        res = self.loop.run_until_complete(gather(*self.tasks, loop=self.loop))
-        self.tasks = []
-        return dict(zip(names, res))
+    def wait_all(self) -> ExceptionDict:
+        """
+        Retrieve results of all scheduled tasks.
+        Returns:
 
+        """
+        names = list(map(lambda task: task.get_name(), self.tasks))
+        done, pending = self.loop.run_until_complete(asyncio.wait(self.tasks,
+                                                                  loop=self.loop,
+                                                                  return_when=asyncio.ALL_COMPLETED))
+        self.tasks = []
+
+        return ExceptionDict(done)
+
+    @wraps(aiohttp.ClientSession.close)
     @abstractmethod
     def close_session(self):
         pass
 
+    @wraps(aiohttp.ClientSession.get)
     @abstractmethod
     def get(self, url, *args, **kwargs) -> V:
         pass
 
+    @wraps(aiohttp.ClientSession.post)
     @abstractmethod
     def post(self, url, *args, **kwargs) -> V:
         pass
 
+    @wraps(aiohttp.ClientSession.put)
     @abstractmethod
     def put(self, url, *args, **kwargs) -> V:
         pass
 
+    @wraps(aiohttp.ClientSession.delete)
     @abstractmethod
     def delete(self, url, *args, **kwargs) -> V:
         pass
