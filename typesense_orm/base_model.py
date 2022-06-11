@@ -19,11 +19,11 @@ class ModelMetaclass(pydantic.main.ModelMetaclass):
     def to_schema(cls) -> Schema:
         field_dict = cls.__fields__.copy()
         field_dict.pop("id", None)
-        fields = list(map(lambda field: FieldArgs(name=field.name,
-                                                  type=field.type_,
-                                                  index=field.field_info.extra.get("index", False),
-                                                  facet=field.field_info.extra.get("facet", False),
-                                                  optional=field.field_info.extra.get("optional", True)),
+        fields = dict(map(lambda field: (field.name, FieldArgs(name=field.name,
+                                                               type=field.type_,
+                                                               index=field.field_info.extra.get("index", False),
+                                                               facet=field.field_info.extra.get("facet", False),
+                                                               optional=field.field_info.extra.get("optional", True))),
                           field_dict.values()))
         schema = Schema(name=cls.schema_name,
                         fields=fields,
@@ -32,6 +32,12 @@ class ModelMetaclass(pydantic.main.ModelMetaclass):
                         default_sorting_field=cls.__config__.default_sort_field)
 
         return schema
+
+    def __getattr__(cls, item):
+        res = cls.schema.fields.get(item, None)
+        if res:
+            return res
+        super().__getattr__(item)
 
     @property
     def endpoint_path(cls):
@@ -62,7 +68,8 @@ class ModelMetaclass(pydantic.main.ModelMetaclass):
                     namespace.update({"__client__": client})
                     break
 
-            client.create_collection(ret.to_schema())
+            ret.schema = ret.to_schema()
+            client.create_collection(ret.schema)
 
         return ret
 

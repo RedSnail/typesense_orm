@@ -5,19 +5,20 @@ from .types import get_from_opt, allowed_types, allowed_types_rev
 
 
 def json_dumper(v, *, default):
-    for field in v["fields"]:
+    for field in v["fields"].values():
         _, field_type = get_from_opt(field["type"])
         field["type"] = allowed_types[field_type]
 
+    v["fields"] = list(v["fields"].values())
     return json.dumps(v)
 
 
 def json_loader(js_string):
     js_dict = json.loads(js_string)
-    fields = []
+    fields = {}
     for field in js_dict["fields"]:
         field["type"] = allowed_types_rev[field["type"]]
-        fields.append(FieldArgs(**field))
+        fields.update({field["name"]: FieldArgs(**field)})
 
     js_dict["fields"] = fields
     return js_dict
@@ -33,7 +34,7 @@ class FieldArgs(BaseModel):
 
 class Schema(BaseModel):
     name: str
-    fields: Sequence[FieldArgs]
+    fields: Dict[str, FieldArgs]
     token_separators: Optional[Sequence[str]]
     symbols_to_index: Optional[Sequence[str]]
     default_sorting_field: Optional[str]
@@ -47,7 +48,7 @@ class Schema(BaseModel):
             field["type"] = allowed_types_rev[field["type"]]
             fields.append(FieldArgs(**field))
 
-        dict_schema["fields"] = fields
+        dict_schema["fields"] = dict(map(lambda f: (f["name"], f), dict_schema["fields"]))
         return cls(**dict_schema)
 
     class Config:
