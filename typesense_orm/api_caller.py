@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, AnyHttpUrl
-from typing import Sequence, Optional, Callable, TypeVar, Awaitable, Dict, Any, Type, Generic, Union
+from typing import Sequence, Optional, Callable, TypeVar, Awaitable, Dict, Any, Type, Generic, Union, AsyncIterable, Iterable
 import aiohttp
 import asyncio
 from asyncio import Task, gather, all_tasks
@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 from pydantic.main import ModelMetaclass
 import inspect
 from .exception_dict import ExceptionDict
+from json import loads
 
 
 class Node(BaseModel):
@@ -50,7 +51,7 @@ def wrap_task(func: Callable[..., Awaitable[Any]]):
         print(f"created task {name}")
         task = self.loop.create_task(func(self, *args, **kwargs), name=name)
         if schedule:
-            self.tasks.append(task)
+            self.tasks[task.get_name()] = task
 
         return task
 
@@ -156,25 +157,42 @@ def request_factory(method: Callable[..., Awaitable[aiohttp.ClientResponse]], sy
     @retry(nearest_node_unhealthy)
     async def make_request(self: Cl, url,
                            handler: Callable[[Dict[str, Any]], T] = lambda a: a,
+                           multiline=False,
                            **kwargs) \
-            -> Awaitable[T]:
+            -> Union[Awaitable[T], AsyncIterable[T]]:
         """
         Make a request and handle a response asynchronously
         Args:
             self (ApiCaller): a caller instance
             url (str): url endpoint to make request
             handler (): a callback function which is used to handle response as json
+            multiline (bool): if the response is expected to be multiline. If so, the callback will be called with two
+            parameters - json and line index.
             **kwargs (): additional keyword arguments passed to the request function.
 
         Returns:
             asyncio.Coroutine
 
         """
-        async with await method(self.session, url, **kwargs) as r:
+        r = await method(self.session, url, **kwargs)
+        if r.status < 200 or r.status >= 300:
+            raise ApiResponseNotOk(await r.json(), r.status)
+        if not multiline:
             json = await r.json()
-            if r.status < 200 or r.status >= 300:
-                raise ApiResponseNotOk(json, r.status)
+            r.close()
             return handler(json)
+        else:
+            async def async_gen(response: aiohttp.ClientResponse):
+                i = 0
+                while True:
+                    line = await response.content.readline()
+                    if line == b"":
+                        break
+                    yield handler(i, loads(line))
+                    i += 1
+                response.close()
+
+            return async_gen(r)
 
     if sync:
         @wraps(make_request)
@@ -182,7 +200,8 @@ def request_factory(method: Callable[..., Awaitable[aiohttp.ClientResponse]], sy
                               handler: Callable[[Dict[str, Any]], T] = lambda a: a,
                               schedule=False,
                               name=None,
-                              **kwargs) -> T:
+                              multiline=False,
+                              **kwargs) -> Union[T, Iterable[T]]:
             """
             Make the same as make_request in a synchronized manner
 
@@ -190,10 +209,15 @@ def request_factory(method: Callable[..., Awaitable[aiohttp.ClientResponse]], sy
                 you can still add a callback handler and make a caller to memorize the results.
 
             """
-            return self.loop.run_until_complete(make_request(self, url,
-                                                             handler=handler,
-                                                             schedule=schedule,
-                                                             name=name, **kwargs))
+            ret = self.loop.run_until_complete(make_request(self, url,
+                                                            handler=handler,
+                                                            schedule=schedule,
+                                                            name=name, multiline=multiline,
+                                                            **kwargs))
+            if isinstance(ret, AsyncIterable):
+                ret: Iterable[T] = self.synchronise_iterator(ret)
+
+            return ret
 
         return make_request_sync
 
@@ -217,7 +241,7 @@ class ApiCaller(ABC, BaseModel):
         healthcheck_interval (timedelta): interval after unsuccessful healthcheck before the next one
         nearest_node: (Node): a nearest node which is used by caller.
         loop: (asyncio.AbstractEventLoop): an event loop which is used by caller to perform tasks (synchronous caller either uses it)
-        tasks: (list of Task): tasks which results can currently be retrieved by ApiCaller.wait_for_all()
+        tasks: (dict of Task): tasks which results can currently be retrieved by ApiCaller.wait_for_all()
         session: (aiohttp.ClientSession or None): aiohttp client session used by caller.
     """
     api_key: str
@@ -236,7 +260,7 @@ class ApiCaller(ABC, BaseModel):
             self.loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
 
         self.loop.set_debug(True)
-        self.tasks = []
+        self.tasks = {}
 
         self.session: Optional[aiohttp.ClientSession] = None
         self.loop.run_until_complete(self.setup_session())
@@ -277,13 +301,34 @@ class ApiCaller(ABC, BaseModel):
         Returns:
 
         """
-        names = list(map(lambda task: task.get_name(), self.tasks))
-        done, pending = self.loop.run_until_complete(asyncio.wait(self.tasks,
+        if len(self.tasks) == 0:
+            return ExceptionDict({})
+
+        done, pending = self.loop.run_until_complete(asyncio.wait(self.tasks.values(),
                                                                   loop=self.loop,
                                                                   return_when=asyncio.ALL_COMPLETED))
-        self.tasks = []
+        self.tasks = {}
 
-        return ExceptionDict(done)
+        return ExceptionDict(dict(map(lambda t: (t.get_name(), t), done)))
+
+    def synchronise_iterator(self, ait: AsyncIterable[T]) -> Iterable[T]:
+        async def get_next(aiterator: AsyncIterable):
+            try:
+                obj = await aiterator.__anext__()
+                return False, obj
+            except StopAsyncIteration:
+                return True, None
+
+        def iterator(aiterator: AsyncIterable):
+            print("IN ITERATOR")
+            while True:
+                fin, obj = self.loop.run_until_complete(get_next(aiterator))
+                if fin:
+                    break
+                yield obj
+
+        ret: Iterable[T] = iterator(ait)
+        return ret
 
     @wraps(aiohttp.ClientSession.close)
     @abstractmethod

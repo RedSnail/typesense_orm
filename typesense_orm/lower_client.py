@@ -1,21 +1,30 @@
 from .api_caller import ApiCaller, Node, ApiCallerSync, ApiCallerAsync
 from .collection import Collection
-from typing import Sequence, Dict, Any, Generic, TypeVar, Type, Optional
+from typing import Sequence, Dict, Any, Generic, TypeVar, Type, Optional, Iterable, AsyncIterable, Union
 from .schema import Schema
 from .exceptions import ApiResponseNotOk
 from .logging import logger
 from gc import get_referrers
 from asyncio import Task
+from abc import abstractmethod, ABC
 
 COLLECTIONS_PATH = "/collections"
 
 C = TypeVar("C", bound=ApiCaller)
 
 
-class LowerClient(Generic[C]):
-    def __init__(self, api_caller: C):
-        self.api_caller = api_caller
-        self.collections: Dict = {}
+class LowerClient(Generic[C], ABC):
+    def __init__(self, api_key: str, nodes: Sequence[Node]):
+        self._api_key = api_key
+        self._nodes = nodes
+        self.api_caller: Optional[ApiCaller] = None
+
+    def start(self):
+        self.api_caller = self.__orig_class__.__args__[0](api_key=self._api_key, nodes=self._nodes)
+
+    def __enter__(self):
+        self.start()
+        return self
 
     def create_collection(self, schema: Schema) -> Schema:
         try:
@@ -50,7 +59,13 @@ class LowerClient(Generic[C]):
         pass
 
     def close(self):
-        return self.api_caller.close_session()
+        self.wait_for_all()
+        self.api_caller.close_session()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        if exc_val:
+            raise exc_val
 
     def wait_for_all(self):
         return self.api_caller.wait_all()

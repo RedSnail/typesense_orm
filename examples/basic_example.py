@@ -1,4 +1,4 @@
-from typesense_orm.api_caller import ApiCallerAsync, Node
+from typesense_orm.api_caller import ApiCallerAsync, Node, ApiCallerSync
 from typesense_orm.base_model import create_base_model
 from typesense_orm.field import Field
 from typesense_orm.types import int32
@@ -6,8 +6,8 @@ from typesense_orm.higher_client import Client
 from typing import List, get_args
 
 node = Node(url="http://localhost:8108")
-client = Client[ApiCallerAsync](api_key="abcd", nodes=[node], caller_class=ApiCallerAsync)
-# print(client.__orig_bases__[0].__parameters__)
+client = Client[ApiCallerSync](api_key="abcd", nodes=[node])
+client.start()
 
 BaseModel = create_base_model(client)
 client.delete_collection("books")
@@ -26,10 +26,9 @@ class Books(BaseModel):
 
 book1 = Books(title="harry potter", year=2001)
 book2 = Books(title="hp 2", year=2002)
-client.add(book1, schedule=True, name="adding_task1")
-client.add(book2, schedule=True, name="adding_task2")
-print(client.wait_for_all())
-print(book2.id)
-print(Books.to_schema().json(exclude_unset=True))
+# it = client.import_json(Books, [book1.json(exclude_unset=True), book2.json(exclude_unset=True)], schedule=True, name="import_task", action="upsert")
+it = client.import_objects([book1, book2])
+for i in it:
+    print(i)
 
 client.close()

@@ -1,5 +1,5 @@
 from asyncio import Task
-from typing import Sequence, List, Callable, Any
+from typing import Dict, List, Callable, Any
 from .exceptions import TaskNotDoneException
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -14,14 +14,14 @@ class task_data:
 
 
 class ExceptionDict(UserDict):
-    def __init__(self, tasks: Sequence[Task], exception_handler: Callable[[Callable], Any] = lambda r: r()):
+    def __init__(self, tasks: Dict[str, Task], exception_handler: Callable[[Callable], Any] = lambda r: r()):
         super().__init__()
         self.exception_handler = exception_handler
-        for task in tasks:
+        for key, task in tasks.items():
             if not task.done():
-                raise TaskNotDoneException(task.get_name())
+                raise TaskNotDoneException(key)
 
-            self.data[task.get_name()] = task_data(task, isinstance(task.exception(), Exception))
+            self.data[key] = task_data(task, isinstance(task.exception(), Exception))
 
     def __getitem__(self, item) -> Any:
         ret = self.data[item]

@@ -39,7 +39,6 @@ class ModelMetaclass(pydantic.main.ModelMetaclass):
 
     def __new__(mcs, name, bases, namespace, **kwargs):
         ret: Type[BaseModel] = super().__new__(mcs, name, bases, namespace, **kwargs)
-        # print(ret.__fields__)
         if (namespace.get('__module__'), namespace.get('__qualname__')) != ('typesense_orm.base_model', 'BaseModel'):
             ret.schema_name = ret.__name__.lower()
             found_sort_field = False
@@ -65,8 +64,6 @@ class ModelMetaclass(pydantic.main.ModelMetaclass):
 
             client.create_collection(ret.to_schema())
 
-
-        # print(namespace)
         return ret
 
 

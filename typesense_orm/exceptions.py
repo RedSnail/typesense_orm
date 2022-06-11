@@ -37,3 +37,8 @@ class TaskNotDoneException(Exception):
 class NotOptional(Exception):
     def __init__(self, field_name):
         super().__init__(f"Field {field_name} is not optional and not indexed. All not indexed fields should be optional")
+
+
+class CollectionUnregistered(Exception):
+    def __init__(self, collection_name: str):
+        super().__init__(f"collection {collection_name} is not registered")
