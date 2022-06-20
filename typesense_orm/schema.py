@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Any, Sequence, Optional, Dict
 import json
 from .types import get_from_opt, allowed_types, allowed_types_rev
+from .search import FieldArgs
 
 
 def json_dumper(v, *, default):
@@ -22,14 +23,6 @@ def json_loader(js_string):
 
     js_dict["fields"] = fields
     return js_dict
-
-
-class FieldArgs(BaseModel):
-    name: str
-    type: Any
-    facet: bool = Field(False)
-    index: bool = Field(False)
-    optional: bool = Field(False)
 
 
 class Schema(BaseModel):

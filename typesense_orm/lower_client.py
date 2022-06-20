@@ -1,10 +1,10 @@
 from .api_caller import ApiCaller, Node, ApiCallerSync, ApiCallerAsync
-from .collection import Collection
 from typing import Sequence, Dict, Any, Generic, TypeVar, Type, Optional, Iterable, AsyncIterable, Union
 from .schema import Schema
 from .exceptions import ApiResponseNotOk
 from .logging import logger
 from gc import get_referrers
+from typing_extensions import Unpack
 from asyncio import Task
 from abc import abstractmethod, ABC
 
@@ -26,7 +26,7 @@ class LowerClient(Generic[C], ABC):
         self.start()
         return self
 
-    def create_collection(self, schema: Schema) -> Schema:
+    def create_collection(self, schema: Schema) -> Optional[Schema]:
         try:
             task_name = f"create_collection_{schema.name}"
             resp = self.api_caller.post(COLLECTIONS_PATH,

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, AnyHttpUrl
-from typing import Sequence, Optional, Callable, TypeVar, Awaitable, Dict, Any, Type, Generic, Union, AsyncIterable, Iterable
+from typing import Sequence, Optional, Callable, TypeVar, Awaitable, Dict, Any, Type, Generic, Union, AsyncIterable, Iterable, ClassVar
 import aiohttp
 import asyncio
 from asyncio import Task, gather, all_tasks
@@ -106,9 +106,11 @@ class MethodAssigner(type):
         ret.delete = request_factory(aiohttp.ClientSession.delete, sync)
         ret.__abstractmethods__ = frozenset(ret.__abstractmethods__ - {"delete", "post", "put", "get"})
         if sync:
-            ret.ret_type = Dict[str, Any]
+            ret.WRAPPER = Union
+            ret.ITERATOR = Iterable
         else:
-            ret.ret_type = Awaitable[T]
+            ret.WRAPPER = Task
+            ret.ITERATOR = AsyncIterable
         return ret
 
 
@@ -244,6 +246,8 @@ class ApiCaller(ABC, BaseModel):
         tasks: (dict of Task): tasks which results can currently be retrieved by ApiCaller.wait_for_all()
         session: (aiohttp.ClientSession or None): aiohttp client session used by caller.
     """
+    WRAPPER: ClassVar = None
+    ITERATOR: ClassVar = None
     api_key: str
     nodes: Sequence[Node]
     connection_timeout: timedelta = Field(timedelta(seconds=3))
@@ -372,6 +376,8 @@ class ApiCaller(ABC, BaseModel):
 
 
 class ApiCallerAsync(ApiCaller, metaclass=ApiCallerMetaclass[Awaitable[T]]):
+    WRAPPER = Task
+    ITERATOR = AsyncIterable
     @classmethod
     def sync(cls):
         return False
@@ -382,6 +388,8 @@ class ApiCallerAsync(ApiCaller, metaclass=ApiCallerMetaclass[Awaitable[T]]):
 
 
 class ApiCallerSync(ApiCaller, metaclass=ApiCallerMetaclass[Dict[str, Any]]):
+    WRAPPER = Union
+    ITERATOR = Iterable
     @classmethod
     def sync(cls):
         return True

@@ -1,6 +1,7 @@
 import pydantic
 from .field import ModelField
-from typing import Dict, ClassVar, Optional, Type
+from typing import Dict, ClassVar, Optional, Type, Sequence, Union, ClassVar
+from .search import SearchRes, SearchQuery
 from .logging import logger
 from .lower_client import LowerClient
 from .types import int32, int64
@@ -9,6 +10,7 @@ from .schema import Schema, FieldArgs
 from .config import BaseConfig
 from .lower_client import COLLECTIONS_PATH
 
+
 pydantic.main.ModelField = ModelField
 pydantic.main.BaseConfig = BaseConfig
 
@@ -16,20 +18,29 @@ DOC_ENDPOINT = "documents"
 
 
 class ModelMetaclass(pydantic.main.ModelMetaclass):
-    def to_schema(cls) -> Schema:
+    schema_name: str
+    schema: Schema
+    __client__: LowerClient
+
+    def to_schema(cls: Type['BaseModel']) -> Schema:
         field_dict = cls.__fields__.copy()
         field_dict.pop("id", None)
         fields = dict(map(lambda field: (field.name, FieldArgs(name=field.name,
                                                                type=field.type_,
                                                                index=field.field_info.extra.get("index", False),
                                                                facet=field.field_info.extra.get("facet", False),
+                                                               infix=field.field_info.extra.get("infix", False),
                                                                optional=field.field_info.extra.get("optional", True))),
                           field_dict.values()))
-        schema = Schema(name=cls.schema_name,
-                        fields=fields,
-                        token_separators=cls.__config__.token_separators,
-                        symbols_to_index=cls.__config__.symbols_to_index,
-                        default_sorting_field=cls.__config__.default_sort_field)
+        schema_dict = {"name": cls.schema_name, "fields": fields}
+        if cls.__config__.token_separators:
+            schema_dict.update({"token_separators": cls.__config__.token_separators})
+        if cls.__config__.symbols_to_index:
+            schema_dict.update({"symbols_to_index": cls.__config__.symbols_to_index})
+        if cls.__config__.default_sorting_field:
+            schema_dict.update({"default_sorting_field": cls.__config__.default_sorting_field})
+
+        schema = Schema(**schema_dict)
 
         return schema
 
@@ -44,12 +55,14 @@ class ModelMetaclass(pydantic.main.ModelMetaclass):
         return f"{COLLECTIONS_PATH}/{cls.schema_name}/{DOC_ENDPOINT}"
 
     def __new__(mcs, name, bases, namespace, **kwargs):
-        ret: Type[BaseModel] = super().__new__(mcs, name, bases, namespace, **kwargs)
-        if (namespace.get('__module__'), namespace.get('__qualname__')) != ('typesense_orm.base_model', 'BaseModel'):
+        ret: Type['BaseModel'] = super().__new__(mcs, name, bases, namespace, **kwargs)
+        if not (namespace.get("__qualname__") in ["BaseModel", "_BaseModel"] and
+                namespace.get("__module__") == "typesense_orm.base_model"):
             ret.schema_name = ret.__name__.lower()
             found_sort_field = False
             ret.__slots__ = tuple(set(ret.__slots__) | pydantic.BaseModel.__slots__ | set(ret.__fields__.keys()))
             for field in ret.__fields__.values():
+                field.typesense_field = True
                 if not field.field_info.extra.get("optional", True) and not field.field_info.extra.get("index", False):
                     raise NotOptional(field.name)
                 if field.field_info.extra.get("default_sorting_field", False):
@@ -59,27 +72,38 @@ class ModelMetaclass(pydantic.main.ModelMetaclass):
                         raise MultipleSortingFields()
 
                     found_sort_field = True
-                    ret.__config__.default_sort_field = field.name
-
-            client: Optional[LowerClient] = None
-            for base in bases:
-                if base.__client__:
-                    client = base.__client__
-                    namespace.update({"__client__": client})
-                    break
+                    ret.__config__.default_sorting_field = field.name
 
             ret.schema = ret.to_schema()
-            client.create_collection(ret.schema)
+            for base in bases:
+                if base.__client__:
+                    ret.__client__ = base.__client__
+                    break
+
+            ret.__client__.create_collection(ret.schema)
 
         return ret
 
 
-class BaseModel(pydantic.main.BaseModel):
+class _BaseModel(pydantic.main.BaseModel):
     id: Optional[str]
 
+    @classmethod
+    def search(cls: ModelMetaclass, query: SearchQuery):
+        pass
 
-def create_base_model(client: LowerClient):
-    return ModelMetaclass("BaseModel", (BaseModel,), {"__module__": "typesense_orm.base_model",
-                                                                    "__qualname__": "BaseModel",
-                                                                    "__client__": client})
+    class Config:
+        typesense_mode = True
+
+
+class BaseModel(_BaseModel, metaclass=ModelMetaclass):
+    pass
+
+
+def create_base_model(client: LowerClient) -> Type[BaseModel]:
+    # here I consciously lie to type checker 'cause it cannot
+    # recognize dynamically created classes, but I still want them to be hinted
+    return ModelMetaclass("BaseModel", (_BaseModel,), {"__module__": "typesense_orm.base_model",
+                                                                     "__qualname__": "BaseModel",
+                                                                     "__client__": client})
 

@@ -1,7 +1,10 @@
-from .lower_client import LowerClient, C
-from typing import Sequence, Type, Dict, Callable, TypeVar, Union, Iterable, AsyncIterable
-from .api_caller import Node, Any
+from .lower_client import LowerClient
+from typing import Sequence, Type, Dict, Callable, TypeVar, Union, Iterable, AsyncIterable, Any
+from .logging import logger
+from typing_extensions import Unpack
+from .api_caller import Node, ApiCaller
 from .base_model import BaseModel
+from .search import SearchQuery, SearchRes, Hit
 from collections import defaultdict
 from typing_inspect import get_bound
 from functools import singledispatchmethod
@@ -14,12 +17,18 @@ from asyncio import Task
 import itertools
 
 ADD_ENDPOINT = "add/"
+SEARCH_ENDPOINT = "/search"
 
 EntryType = TypeVar("EntryType", bound=BaseModel)
+HandlerRetType = TypeVar("HandlerRetType")
+
+
+C = TypeVar("C")
 
 
 class Client(LowerClient[C]):
-    def add(self, entry: EntryType, schedule=False, name=None, on_added: Callable[[EntryType], Any] = lambda a: a):
+    def add(self, entry: EntryType, schedule=False, name=None,
+            on_added: Callable[[EntryType], HandlerRetType] = lambda a: a):
         def handler(resp: Dict[str, Any]):
             entry.id = resp["id"]
             return on_added(entry)
@@ -27,7 +36,8 @@ class Client(LowerClient[C]):
         return self.api_caller.post(f"{entry.__class__.endpoint_path}", data=entry.json(exclude_unset=True),
                                     schedule=schedule, name=name, handler=handler)
 
-    def upsert(self, entry: EntryType, schedule=False, name=None, on_upsert: Callable[[EntryType], Any] = lambda a: a):
+    def upsert(self, entry: EntryType, schedule=False, name=None,
+               on_upsert: Callable[[EntryType], HandlerRetType] = lambda a: a):
         def handler(resp: Dict[str, Any]):
             entry.id = resp["id"]
             return on_upsert(entry)
@@ -36,8 +46,10 @@ class Client(LowerClient[C]):
                                     schedule=schedule, name=name, handler=handler, params={"action": "upsert"})
 
     def import_json(self, collection: Type[EntryType], data: Union[AsyncIterable[str], Iterable[str]],
-                    schedule=False, name=None, error_handler: Callable[[int, Dict[str, Any]], Any] = lambda i, a: (i, a),
-                    action: str = "create", entry_handler: Callable[[int, EntryType], Any] = lambda i, a: (i, a)):
+                    schedule=False, name=None,
+                    error_handler: Callable[[int, Dict[str, Any]], HandlerRetType] = lambda i, a: (i, a),
+                    action: str = "create",
+                    entry_handler: Callable[[int, EntryType], HandlerRetType] = lambda i, a: (i, a)):
         if isinstance(data, Iterable):
             async def as_gen(iterable: Iterable):
                 for i in iterable:
@@ -57,11 +69,12 @@ class Client(LowerClient[C]):
 
         return self.api_caller.post(f"{collection.endpoint_path}/import", data=iter_byte(data),
                                     schedule=schedule, name=name, handler=handler, multiline=True,
-                                    params={"action": action, "return_res": "true"})
+                                    params={"action": action, "return_res": "true", "return_id": "false"})
 
     def import_objects(self, data: Union[AsyncIterable[EntryType], Iterable[EntryType]], schedule=False, name=None,
-                       error_handler: Callable[[int, Dict[str, Any]], Any] = lambda i, a: (i, a),
-                       action: str = "create", entry_handler: Callable[[int, EntryType], Any] = lambda i, a: (i, a)):
+                       error_handler: Callable[[int, Dict[str, Any]], HandlerRetType] = lambda i, a: (i, a),
+                       action: str = "create",
+                       entry_handler: Callable[[int, EntryType], HandlerRetType] = lambda i, a: (i, a)):
         if isinstance(data, Iterable):
             async def as_gen(iterable: Iterable):
                 for i in iterable:
@@ -90,6 +103,14 @@ class Client(LowerClient[C]):
                 return self.api_caller.loop.run_until_complete(task)
             else:
                 return task
+
+    def search(self, collection: Type[EntryType], query: SearchQuery, schedule=False, name=None):
+        def handler(resp: Dict[str, Any]):
+            return SearchRes[collection].parse_obj(resp)
+
+        return self.api_caller.get(f"{collection.endpoint_path}/search", params=query.dict(exclude_unset=True),
+                                   schedule=schedule, name=name, handler=handler)
+
 
 
 

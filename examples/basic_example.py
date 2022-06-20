@@ -1,4 +1,4 @@
-from typesense_orm import ApiCallerAsync, Node, ApiCallerSync, create_base_model, Field, int32, Client
+from typesense_orm import ApiCallerAsync, Node, ApiCallerSync, create_base_model, Field, int32, Client, SearchQuery
 from typing import List, get_args
 
 node = Node(url="http://localhost:8108")
@@ -25,6 +25,9 @@ book2 = Books(title="hp 2", year=2002)
 it = client.import_objects([book1, book2])
 for i in it:
     print(i)
-print(Books.title)
+
+q = SearchQuery(q="harry potter", query_by=[Books.title])
+res = client.search(Books, q)
+print(res)
 
 client.close()
