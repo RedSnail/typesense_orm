@@ -10,7 +10,7 @@ class Condition(Enum):
     IN = ""
     EXACT_MATCH = "="
     NOT_MATCH = "!="
-    IN_RANGE = ""
+    IN_RANGE = " "
     MORE = ">"
     LESS = "<"
     MORE_OR_EQ = ">="
@@ -26,12 +26,22 @@ class Infix(Enum):
 class FilterExpression(BaseModel):
     __root__: List['AtomicFilterExpr']
 
+    @validator("__root__", pre=True)
+    def to_list(cls, v):
+        if not isinstance(v, list):
+            return [v]
+        else:
+            return v
+
     def __and__(self, other: 'FilterExpression'):
         if isinstance(other, FilterExpression):
             return FilterExpression(__root__=self.__root__ + other.__root__)
         if isinstance(other, AtomicFilterExpr):
             self.__root__.append(other)
             return self
+
+    def to_sting(self):
+        return "&".join(map(lambda a: a.to_string(), self.__root__))
 
 
 numeric = [int, float, int32, int64]
@@ -70,7 +80,7 @@ class AtomicFilterExpr(BaseModel):
         cond: Condition = values.get("condition")
         col: 'FieldArgs' = values.get("column")
         if cond in [Condition.LESS, Condition.LESS_OR_EQ, Condition.MORE, Condition.MORE_OR_EQ] and \
-           type(param not in numeric):
+           type(param) not in numeric:
             raise ValueError("With numeric comparison parameter should be numeric")
 
         if cond == Condition.IN_RANGE:
@@ -106,6 +116,12 @@ class AtomicFilterExpr(BaseModel):
             return other
         if isinstance(other, AtomicFilterExpr):
             return FilterExpression(__root__=[self, other])
+
+    def to_string(self):
+        return f"{self.column.name}: {self.condition.value} {self.parameter}"
+
+
+FilterExpression.update_forward_refs()
 
 
 class FieldArgs(BaseModel):
@@ -172,7 +188,9 @@ class SearchQuery(BaseModel):
 
     def dict(self, *args, **kwargs) -> Dict[str, Any]:
         ret = super().dict(*args, **kwargs)
-        ret["query_by"] = list(map(lambda field: field["name"], ret["query_by"]))
+        ret["query_by"] = list(map(lambda field: field.name, self.query_by))
+        ret["filter_by"] = self.filter_by.to_sting()
+
         return ret
 
     class Config:

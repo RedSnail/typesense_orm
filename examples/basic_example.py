@@ -26,7 +26,7 @@ it = client.import_objects([book1, book2])
 for i in it:
     print(i)
 
-q = SearchQuery(q="harry potter", query_by=[Books.title])
+q = SearchQuery(q="harry potter", query_by=[Books.title], filter_by=Books.year > 2000)
 res = client.search(Books, q)
 print(res)
 
