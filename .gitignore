@@ -1,3 +1,5 @@
 dist/
 venv/
 .idea/
+__pycache__/
+typesense_orm.egg-info/
