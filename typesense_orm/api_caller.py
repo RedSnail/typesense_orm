@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field, AnyHttpUrl
+from pydantic.generics import GenericModel
 from typing import Sequence, Optional, Callable, TypeVar, Awaitable, Dict, Any, Type, Generic, Union, AsyncIterable, Iterable, ClassVar
 import aiohttp
 import asyncio
@@ -22,6 +23,9 @@ class Node(BaseModel):
 Cl = TypeVar("Cl", bound="ApiCaller")
 T = TypeVar("T")
 V = TypeVar("V")
+
+Wrapper = TypeVar("Wrapper")
+Iterator = TypeVar("Iterator")
 
 
 def wrap_task(func: Callable[..., Awaitable[Any]]):
@@ -92,7 +96,7 @@ def retry(do_after_retries: Callable[[Cl], Any]):
     return decorator
 
 
-class MethodAssigner(type):
+class MethodAssigner(ModelMetaclass):
     """
     A metaclass for api callers, I have no wish to implement all request methods separately, so I've created a factory,
     and this metaclass implements it.
@@ -113,9 +117,6 @@ class MethodAssigner(type):
             ret.ITERATOR = AsyncIterable
         return ret
 
-
-class ApiCallerMetaclass(MethodAssigner, ModelMetaclass, Generic[V]):
-    pass
 
 
 def no_healthy_node(self: Cl):
@@ -231,7 +232,7 @@ def request_factory(method: Callable[..., Awaitable[aiohttp.ClientResponse]], sy
 API_KEY_HEADER_NAME = 'X-TYPESENSE-API-KEY'
 
 
-class ApiCaller(ABC, BaseModel):
+class ApiCaller(ABC, GenericModel, Generic[Wrapper, Iterator]):
     """
     A base class for api callers.
     Attributes:
@@ -341,30 +342,23 @@ class ApiCaller(ABC, BaseModel):
 
     @wraps(aiohttp.ClientSession.get)
     @abstractmethod
-    def get(self, url, *args, **kwargs) -> V:
+    def get(self, url, *args, **kwargs) -> Wrapper:
         pass
 
     @wraps(aiohttp.ClientSession.post)
     @abstractmethod
-    def post(self, url, *args, **kwargs) -> V:
+    def post(self, url, *args, **kwargs) -> Wrapper:
         pass
 
     @wraps(aiohttp.ClientSession.put)
     @abstractmethod
-    def put(self, url, *args, **kwargs) -> V:
+    def put(self, url, *args, **kwargs) -> Wrapper:
         pass
 
     @wraps(aiohttp.ClientSession.delete)
     @abstractmethod
-    def delete(self, url, *args, **kwargs) -> V:
+    def delete(self, url, *args, **kwargs) -> Wrapper:
         pass
-
-    @classmethod
-    def ret_type(cls, type: type):
-        if cls.sync():
-            return type
-        else:
-            return Awaitable[type]
 
     @classmethod
     @abstractmethod
@@ -375,7 +369,7 @@ class ApiCaller(ABC, BaseModel):
         extra = "allow"
 
 
-class ApiCallerAsync(ApiCaller, metaclass=ApiCallerMetaclass[Awaitable[T]]):
+class ApiCallerAsync(ApiCaller[Task, AsyncIterable], metaclass=MethodAssigner):
     WRAPPER = Task
     ITERATOR = AsyncIterable
     @classmethod
@@ -387,7 +381,7 @@ class ApiCallerAsync(ApiCaller, metaclass=ApiCallerMetaclass[Awaitable[T]]):
         return await self.session.close()
 
 
-class ApiCallerSync(ApiCaller, metaclass=ApiCallerMetaclass[Dict[str, Any]]):
+class ApiCallerSync(ApiCaller[Any, Iterable], metaclass=MethodAssigner):
     WRAPPER = Union
     ITERATOR = Iterable
     @classmethod

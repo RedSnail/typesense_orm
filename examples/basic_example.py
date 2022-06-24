@@ -1,12 +1,24 @@
 from typesense_orm import ApiCallerAsync, Node, ApiCallerSync, create_base_model, Field, int32, Client, SearchQuery
-from typing import List, get_args
+from typing import List, get_args, Optional
+from enum import IntEnum, Enum
+
+
+class Genres(IntEnum):
+    FANTASY = 1
+    NOVEL = 2
+    OTHER = 3
+
+
 
 node = Node(url="http://localhost:8108")
 client = Client[ApiCallerSync](api_key="abcd", nodes=[node])
 client.start()
 
 BaseModel = create_base_model(client)
-client.delete_collection("books")
+try:
+    client.delete_collection("books")
+except Exception:
+    pass
 
 
 class Books(BaseModel):
@@ -14,14 +26,16 @@ class Books(BaseModel):
     year: int32 = Field(2001, default_sorting_field=True, optional=False, index=True)
     rating: float = Field(0)
     authors: List[str] = Field([])
+    genre: Genres = Field(Genres.OTHER)
 
     class Config:
         symbols_to_index = []
         token_separators = ["+"]
 
 
-book1 = Books(title="harry potter", year=2001)
-book2 = Books(title="hp 2", year=2002)
+book1 = Books(title="harry potter", year=2001, genre=Genres.FANTASY)
+book2 = Books(title="hp 2", year=2002, genre=Genres.FANTASY)
+print(book1.json(exclude_unset=True))
 it = client.import_objects([book1, book2])
 for i in it:
     print(i)

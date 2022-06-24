@@ -1,6 +1,6 @@
 import pydantic
 from .field import ModelField
-from typing import Dict, ClassVar, Optional, Type, Sequence, Union, ClassVar
+from typing import Dict, ClassVar, Optional, Type, Sequence, Union, ClassVar, Callable, Any
 from .search import SearchRes, SearchQuery
 from .logging import logger
 from .lower_client import LowerClient
@@ -9,6 +9,7 @@ from .exceptions import InvalidSortingFieldType, MultipleSortingFields, NotOptio
 from .schema import Schema, FieldArgs
 from .config import BaseConfig
 from .lower_client import COLLECTIONS_PATH
+from typeguard import check_type
 
 
 pydantic.main.ModelField = ModelField
@@ -91,6 +92,24 @@ class _BaseModel(pydantic.main.BaseModel):
     @classmethod
     def search(cls: ModelMetaclass, query: SearchQuery):
         pass
+
+    def json(
+        self,
+        *,
+        include=None,
+        exclude=None,
+        by_alias: bool = False,
+        skip_defaults: bool = None,
+        exclude_unset: bool = False,
+        exclude_defaults: bool = False,
+        exclude_none: bool = False,
+        encoder: Optional[Callable[[Any], Any]] = None,
+        models_as_dict: bool = True,
+        **dumps_kwargs: Any,
+    ) -> str:
+        return super().json(include=include, exclude=exclude, by_alias=by_alias, skip_defaults=skip_defaults,
+                            exclude_unset=exclude_unset, exclude_defaults=exclude_defaults, exclude_none=exclude_none,
+                            encoder=encoder)
 
     class Config:
         typesense_mode = True

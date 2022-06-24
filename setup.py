@@ -1,4 +1,3 @@
-import typesense_orm
 from setuptools import setup, find_packages
 
 
@@ -16,7 +15,7 @@ with open('README.md') as f:
 setup(
     name="typesense_orm",
     packages=find_packages(),
-    version=typesense_orm.__version__,
+    version="0.0.9",
     description="A typesense-server client using orm paradigm based on pydantic",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -27,6 +26,6 @@ setup(
     url="https://github.com/RedSnail/typesense_orm",
     python_requires='>=3.8',
     include_package_data=False,
+    build_requires=["wheel"],
     install_requires=requires
 )
-

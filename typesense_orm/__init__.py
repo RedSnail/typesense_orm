@@ -7,6 +7,6 @@ from .types import int32, int64
 from .search import SearchQuery, SearchRes
 
 nest_asyncio.apply()
-__version__ = "0.0.1"
+__version__ = "0.0.6"
 
 

@@ -4,7 +4,9 @@ from .exceptions import UnsupportedTypeError
 import pydantic
 from pydantic.fields import Undefined, NoArgAnyCallable, FieldInfo
 from .logging import logger
-from .types import get_from_opt, geo, allowed_types
+from .types import get_from_opt, geo, allowed_types, check_subclass
+from typeguard import check_type
+import inspect
 
 
 def Field(default: Any = Undefined,
@@ -25,21 +27,24 @@ class ModelField(pydantic.fields.ModelField):
             logger.debug("performing type analysis")
             opt, field_type = get_from_opt(self.type_)
             origin = get_origin(field_type)
+            arg = get_args(field_type)
             if origin is not None:
                 # god please forgive me for this sin.
                 # These checks do not look nice, and they are not, but they need to be done.
 
                 if issubclass(origin, Sequence):
-                    seq_type = get_args(field_type)
                     if field_type is not geo:
-                        field_type = Sequence[seq_type]
+                        field_type = Sequence[arg]
 
                 if opt:
                     self.type_ = Optional[field_type]
                 else:
                     self.type_ = field_type
 
-            if field_type not in allowed_types.keys():
+            logger.debug(f"{self.name} CHECK")
+            try:
+                allowed_types[field_type]
+            except KeyError:
                 raise UnsupportedTypeError(self.type_)
 
         super()._type_analysis()

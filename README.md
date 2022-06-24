@@ -1,5 +1,5 @@
 # Typesense-orm
-This is an ORM client for typesense-server. It is still under construction (now only write operations work)
+This is an ORM client for typesense-server. It is still under construction (some search options are not implemented yet, as well as aliases and synonyms)
 ### Installation
 `pip install typesense_orm`
 ### Description
