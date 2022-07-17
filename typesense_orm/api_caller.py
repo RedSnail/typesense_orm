@@ -80,10 +80,13 @@ def retry(do_after_retries: Callable[[Cl], Any]):
                         logger.info("trying")
                         res = func(self, *args, **kwargs)
                         if inspect.iscoroutine(res):
-
-                            return await res
+                            ret = await res
                         else:
-                            return res
+                            ret = res
+
+                        if ret:
+                            return ret
+
                     except aiohttp.ClientConnectionError:
                         logger.debug("excepted connection")
 
@@ -274,6 +277,8 @@ class ApiCaller(ABC, GenericModel, Generic[Wrapper, Iterator]):
         now = datetime.now()
         if now - node.last_checked > self.healthcheck_interval:
             response = await session.get(node.url + "/health")
+            logger.debug(await response.json())
+            logger.debug(response.status)
             if response.status == 200:
                 return datetime.now() - now
 
@@ -293,7 +298,8 @@ class ApiCaller(ABC, GenericModel, Generic[Wrapper, Iterator]):
         return best_node
 
     async def setup_session(self):
-        sel_session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.connection_timeout.seconds))
+        sel_session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.connection_timeout.seconds),
+                                            headers={API_KEY_HEADER_NAME: self.api_key})
         self.nearest_node = await self.select_new_node(sel_session)
         await sel_session.close()
         self.session = aiohttp.ClientSession(self.nearest_node.url,

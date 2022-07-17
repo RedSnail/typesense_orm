@@ -15,7 +15,7 @@ with open('README.md') as f:
 setup(
     name="typesense_orm",
     packages=find_packages(),
-    version="0.0.9",
+    version="test",
     description="A typesense-server client using orm paradigm based on pydantic",
     long_description=long_description,
     long_description_content_type="text/markdown",

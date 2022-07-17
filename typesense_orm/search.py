@@ -173,6 +173,7 @@ class SearchQuery(BaseModel):
     infix: Optional[Union[Infix, Sequence[Infix]]]
     split_join_tokens: bool = Field(False)
     pre_segmented_query: bool = Field(False)
+    per_page: int = Field(10)
 
     @root_validator
     def validate_len(cls, v):
@@ -190,6 +191,12 @@ class SearchQuery(BaseModel):
         ret = super().dict(*args, **kwargs)
         ret["query_by"] = list(map(lambda field: field.name, self.query_by))
         ret["filter_by"] = self.filter_by.to_sting()
+        for k, v in ret.items():
+            if isinstance(v, bool):
+                if v:
+                    ret[k] = "true"
+                else:
+                    ret[k] = "false"
 
         return ret
 
@@ -198,6 +205,10 @@ class SearchQuery(BaseModel):
         #json_encoders = {FieldArgs: lambda field: field.name,
         #                 AtomicFilterExpr: lambda expr: f"{expr.column.name}{expr.condition}:{expr.parameter}",
         #                 Tuple[numeric_union, numeric_union]: lambda tup: f"[{tup[0]}..{tup[1]}]"}
+
+
+class PaginatedQuery(SearchQuery):
+    page: int = Field(1)
 
 
 class RequestParams(BaseModel):

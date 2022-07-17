@@ -4,7 +4,7 @@ from .logging import logger
 from typing_extensions import Unpack
 from .api_caller import Node, ApiCaller
 from .base_model import BaseModel
-from .search import SearchQuery, SearchRes, Hit
+from .search import SearchQuery, SearchRes, Hit, PaginatedQuery
 from collections import defaultdict
 from typing_inspect import get_bound
 from functools import singledispatchmethod
@@ -21,7 +21,6 @@ SEARCH_ENDPOINT = "/search"
 
 EntryType = TypeVar("EntryType", bound=BaseModel)
 HandlerRetType = TypeVar("HandlerRetType")
-
 
 C = TypeVar("C")
 
@@ -93,7 +92,7 @@ class Client(LowerClient[C]):
                     if self.api_caller.sync():
                         return itertools.chain(*tasks_or_its)
                     else:
-                        return chain(*(await part_task for part_task in tasks_or_its))
+                        return chain.from_iterable((await part_task for part_task in tasks_or_its))
 
             task = self.api_caller.loop.create_task(import_everything(data), name=name)
             if schedule:
@@ -108,13 +107,17 @@ class Client(LowerClient[C]):
         def handler(resp: Dict[str, Any]):
             return SearchRes[collection].parse_obj(resp)
 
-        return self.api_caller.get(f"{collection.endpoint_path}/search", params=query.dict(exclude_unset=True),
-                                   schedule=schedule, name=name, handler=handler)
+        first_res = self.api_caller.get(f"{collection.endpoint_path}/search",
+                                        params=query.dict(exclude_unset=True, exclude_none=True),
+                                        schedule=schedule, name=name, handler=handler)
+        yield first_res
+        if self.api_caller.sync():
+            pages = first_res.out_of
+        else:
+            pages = self.api_caller.loop.run_until_complete(first_res).out_of
 
-
-
-
-
-
-
-
+        for i in range(1, pages):
+            params = PaginatedQuery(page=i, **query.__dict__)
+            yield self.api_caller.get(f"{collection.endpoint_path}/search",
+                                      params=params.dict(exclude_unset=True, exclude_none=True, exclude_defaults=True),
+                                      schedule=schedule, name=name, handler=handler)

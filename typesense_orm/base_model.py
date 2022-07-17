@@ -55,8 +55,11 @@ class ModelMetaclass(pydantic.main.ModelMetaclass):
     def endpoint_path(cls):
         return f"{COLLECTIONS_PATH}/{cls.schema_name}/{DOC_ENDPOINT}"
 
-    def __new__(mcs, name, bases, namespace, **kwargs):
+    def __new__(mcs, name, bases, namespace, is_typesense=False, **kwargs):
         ret: Type['BaseModel'] = super().__new__(mcs, name, bases, namespace, **kwargs)
+        if is_typesense:
+            return ret
+
         if not (namespace.get("__qualname__") in ["BaseModel", "_BaseModel"] and
                 namespace.get("__module__") == "typesense_orm.base_model"):
             ret.schema_name = ret.__name__.lower()
@@ -115,7 +118,7 @@ class _BaseModel(pydantic.main.BaseModel):
         typesense_mode = True
 
 
-class BaseModel(_BaseModel, metaclass=ModelMetaclass):
+class BaseModel(_BaseModel, metaclass=ModelMetaclass, is_typesense=True):
     pass
 
 

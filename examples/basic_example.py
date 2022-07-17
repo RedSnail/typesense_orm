@@ -9,7 +9,6 @@ class Genres(IntEnum):
     OTHER = 3
 
 
-
 node = Node(url="http://localhost:8108")
 client = Client[ApiCallerSync](api_key="abcd", nodes=[node])
 client.start()
@@ -40,8 +39,9 @@ it = client.import_objects([book1, book2])
 for i in it:
     print(i)
 
-q = SearchQuery(q="harry potter", query_by=[Books.title], filter_by=Books.year > 2000)
+q = SearchQuery(q="harry potter", query_by=[Books.title], filter_by=Books.year > 2000, split_join_tokens=True)
 res = client.search(Books, q)
-print(res)
+for r in res:
+    print(r)
 
 client.close()
