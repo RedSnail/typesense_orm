@@ -27,7 +27,7 @@ class ModelMetaclass(pydantic.main.ModelMetaclass):
         field_dict = cls.__fields__.copy()
         field_dict.pop("id", None)
         fields = dict(map(lambda field: (field.name, FieldArgs(name=field.name,
-                                                               type=field.type_,
+                                                               type=field.outer_type_,
                                                                index=field.field_info.extra.get("index", False),
                                                                facet=field.field_info.extra.get("facet", False),
                                                                infix=field.field_info.extra.get("infix", False),

@@ -13,7 +13,7 @@ def Field(default: Any = Undefined,
           *,
           default_factory: Optional[NoArgAnyCallable] = None,
           facet=False,
-          index=False,
+          index=True,
           optional=True,
           default_sorting_field=False,
           infix=False):
@@ -25,7 +25,7 @@ class ModelField(pydantic.fields.ModelField):
     def _type_analysis(self) -> None:
         if self.model_config.typesense_mode:
             logger.debug("performing type analysis")
-            opt, field_type = get_from_opt(self.type_)
+            opt, field_type = get_from_opt(self.outer_type_)
             origin = get_origin(field_type)
             arg = get_args(field_type)
             if origin is not None:
@@ -37,9 +37,9 @@ class ModelField(pydantic.fields.ModelField):
                         field_type = Sequence[arg]
 
                 if opt:
-                    self.type_ = Optional[field_type]
+                    self.outer_type_ = Optional[field_type]
                 else:
-                    self.type_ = field_type
+                    self.outer_type_ = field_type
 
             logger.debug(f"{self.name} CHECK")
             try:

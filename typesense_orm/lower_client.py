@@ -28,6 +28,7 @@ class LowerClient(Generic[C], ABC):
 
     def create_collection(self, schema: Schema) -> Optional[Schema]:
         try:
+            # print(schema.json(exclude_unset=True))
             task_name = f"create_collection_{schema.name}"
             resp = self.api_caller.post(COLLECTIONS_PATH,
                                         handler=lambda d: Schema.from_dict(d),

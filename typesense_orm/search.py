@@ -173,7 +173,13 @@ class SearchQuery(BaseModel):
     infix: Optional[Union[Infix, Sequence[Infix]]]
     split_join_tokens: bool = Field(False)
     pre_segmented_query: bool = Field(False)
+
     per_page: int = Field(10)
+
+    facet_by: Optional[Sequence[FieldArgs]]
+    max_facet_values: Optional[int]
+    facet_query: Optional[Dict[FieldArgs, str]]
+    facet_query_num_typos: Optional[int]
 
     @root_validator
     def validate_len(cls, v):
@@ -187,10 +193,38 @@ class SearchQuery(BaseModel):
 
         return v
 
+    @validator("facet_by")
+    def validate_facet(cls, v):
+        if v is None:
+            return None
+
+        for field_arg in v:
+            if not field_arg.facet:
+                raise ValueError(f"field {field_arg.name} is not facet")
+        return v
+
+    @validator("facet_query")
+    def validate_facet_query(cls, v, values, **kwargs):
+        if v is None:
+            return None
+
+        if "facet_by" not in values:
+            raise ValueError("cannot specify facet_query when facet_by is not specified")
+
+        for field_args in v.keys():
+            if field_args not in values.get("facet_by"):
+                raise ValueError(f"cannot make facet query on {field_args.name}: it's not specified in facet_by")
+
     def dict(self, *args, **kwargs) -> Dict[str, Any]:
         ret = super().dict(*args, **kwargs)
         ret["query_by"] = list(map(lambda field: field.name, self.query_by))
-        ret["filter_by"] = self.filter_by.to_sting()
+        if "filter_by" in ret:
+            ret["filter_by"] = self.filter_by.to_sting()
+        if "facet_by" in ret:
+            ret["facet_by"] = list(map(lambda a: a.name, self.facet_by))
+        if "facet_query" in ret:
+            ret["facet_query"] = ",".join(map(lambda fargs, q: ":".join([fargs.name, q]), self.facet_query.items()))
+
         for k, v in ret.items():
             if isinstance(v, bool):
                 if v:
@@ -239,8 +273,28 @@ class Hit(GenericModel, Generic[T]):
     text_match: int
 
 
+class Count(BaseModel):
+    count: int
+    highlighted: int
+    value: int
+
+
+class Stats(BaseModel):
+    avg: float
+    max: float
+    min: float
+    sum: float
+    total_values: int
+
+
+class FacetRes(BaseModel):
+    counts: Sequence[Count]
+    field_name: str
+    stats: Stats
+
+
 class SearchRes(GenericModel, Generic[T]):
-    facet_counts: Sequence[int]
+    facet_counts: Sequence[FacetRes]
     found: int
     out_of: int
     page: int

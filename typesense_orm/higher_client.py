@@ -32,7 +32,7 @@ class Client(LowerClient[C]):
             entry.id = resp["id"]
             return on_added(entry)
 
-        return self.api_caller.post(f"{entry.__class__.endpoint_path}", data=entry.json(exclude_unset=True),
+        return self.api_caller.post(f"{entry.__class__.endpoint_path}", data=entry.json(exclude_none=True),
                                     schedule=schedule, name=name, handler=handler)
 
     def upsert(self, entry: EntryType, schedule=False, name=None,
@@ -41,7 +41,7 @@ class Client(LowerClient[C]):
             entry.id = resp["id"]
             return on_upsert(entry)
 
-        return self.api_caller.post(f"{entry.__class__.endpoint_path}", data=entry.json(exclude_unset=True),
+        return self.api_caller.post(f"{entry.__class__.endpoint_path}", data=entry.json(exclude_none=True),
                                     schedule=schedule, name=name, handler=handler, params={"action": "upsert"})
 
     def import_json(self, collection: Type[EntryType], data: Union[AsyncIterable[str], Iterable[str]],
@@ -58,6 +58,7 @@ class Client(LowerClient[C]):
 
         async def iter_byte(iter_json: AsyncIterable[str]):
             async for i in iter_json:
+                print(i)
                 yield (i + "\n").encode("utf-8")
 
         def handler(i: int, resp: Dict[str, Any]):
@@ -85,7 +86,7 @@ class Client(LowerClient[C]):
                 tasks_or_its: Sequence[Union[Task, Iterable]] = []
                 async for k, g in groupby(as_generator, key=lambda e: type(e)):
                     res = self.import_json(k,
-                                           as_map(lambda e: e.json(exclude_unset=True), g),
+                                           as_map(lambda e: e.json(exclude_none=True), g),
                                            schedule=False, error_handler=error_handler, entry_handler=entry_handler,
                                            action=action)
                     tasks_or_its.append(res)
@@ -105,10 +106,11 @@ class Client(LowerClient[C]):
 
     def search(self, collection: Type[EntryType], query: SearchQuery, schedule=False, name=None):
         def handler(resp: Dict[str, Any]):
+            print(resp)
             return SearchRes[collection].parse_obj(resp)
 
         first_res = self.api_caller.get(f"{collection.endpoint_path}/search",
-                                        params=query.dict(exclude_unset=True, exclude_none=True),
+                                        params=query.dict(exclude_none=True),
                                         schedule=schedule, name=name, handler=handler)
         yield first_res
         if self.api_caller.sync():
@@ -119,5 +121,5 @@ class Client(LowerClient[C]):
         for i in range(1, pages):
             params = PaginatedQuery(page=i, **query.__dict__)
             yield self.api_caller.get(f"{collection.endpoint_path}/search",
-                                      params=params.dict(exclude_unset=True, exclude_none=True, exclude_defaults=True),
+                                      params=params.dict(exclude_none=True, exclude_defaults=True),
                                       schedule=schedule, name=name, handler=handler)

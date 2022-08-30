@@ -15,8 +15,13 @@ def check_subclass(subclass, superclass):
     if superclass == Any:
         return True
 
+    if (superclass is None) or (subclass is None):
+        return False
+
     sub_origin = get_origin(subclass)
     sub_arg = get_args(subclass)
+    if sub_origin is None:
+        sub_arg = subclass
     if not isinstance(sub_arg, Iterable):
         sub_arg = [sub_arg]
 
@@ -25,6 +30,8 @@ def check_subclass(subclass, superclass):
 
     super_origin = get_origin(superclass)
     super_arg = get_args(superclass)
+    if super_origin is None:
+        super_arg = superclass
     if not isinstance(super_arg, Iterable):
         super_arg = [super_arg]
 

@@ -26,20 +26,22 @@ class Books(BaseModel):
     rating: float = Field(0)
     authors: List[str] = Field([])
     genre: Genres = Field(Genres.OTHER)
+    age_rating: int32 = Field(0, facet=True)
 
     class Config:
         symbols_to_index = []
         token_separators = ["+"]
 
 
-book1 = Books(title="harry potter", year=2001, genre=Genres.FANTASY)
-book2 = Books(title="hp 2", year=2002, genre=Genres.FANTASY)
+book1 = Books(title="harry potter", year=2001, genre=Genres.FANTASY, authors=["Joahn Rowling"])
+book2 = Books(title="hp 2", year=2002, genre=Genres.FANTASY, authors=["Joahn Rowling"])
 print(book1.json(exclude_unset=True))
 it = client.import_objects([book1, book2])
 for i in it:
     print(i)
 
-q = SearchQuery(q="harry potter", query_by=[Books.title], filter_by=Books.year > 2000, split_join_tokens=True)
+q = SearchQuery(q="harry potter", query_by=[Books.title], filter_by=Books.year > 2000,
+                split_join_tokens=True, facet_by=[Books.age_rating])
 res = client.search(Books, q)
 for r in res:
     print(r)
