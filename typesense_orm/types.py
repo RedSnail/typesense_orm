@@ -1,4 +1,4 @@
-from typing import TypeVar, Dict, Sequence, Tuple, Union, get_args, get_origin, _GenericAlias, Iterable, Any
+from typing import TypeVar, Dict, Sequence, Tuple, Union, get_args, get_origin, _GenericAlias, Iterable, Any, Optional
 from pydantic import conint
 from enum import IntEnum
 
@@ -20,6 +20,10 @@ def check_subclass(subclass, superclass):
 
     sub_origin = get_origin(subclass)
     sub_arg = get_args(subclass)
+
+    if sub_origin == Optional:
+        return check_subclass(sub_arg, superclass)
+
     if sub_origin is None:
         sub_arg = subclass
     if not isinstance(sub_arg, Iterable):
@@ -30,6 +34,8 @@ def check_subclass(subclass, superclass):
 
     super_origin = get_origin(superclass)
     super_arg = get_args(superclass)
+    if super_origin == Optional:
+        return check_subclass(subclass, super_arg)
     if super_origin is None:
         super_arg = superclass
     if not isinstance(super_arg, Iterable):
