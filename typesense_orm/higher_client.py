@@ -15,6 +15,7 @@ import random
 import string
 from asyncio import Task
 import itertools
+import math
 
 ADD_ENDPOINT = "add/"
 SEARCH_ENDPOINT = "/search"
@@ -114,9 +115,10 @@ class Client(LowerClient[C]):
                                         schedule=schedule, name=name, handler=handler)
         yield first_res
         if self.api_caller.sync():
-            pages = first_res.out_of
+            pages = math.ceil(first_res.found/first_res.out_of)
         else:
-            pages = self.api_caller.loop.run_until_complete(first_res).out_of
+            first_res_sync = self.api_caller.loop.run_until_complete(first_res)
+            pages = math.ceil(first_res_sync.found/first_res_sync.out_of)
 
         for i in range(1, pages):
             params = PaginatedQuery(page=i, **query.__dict__)

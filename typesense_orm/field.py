@@ -14,7 +14,7 @@ def Field(default: Any = Undefined,
           default_factory: Optional[NoArgAnyCallable] = None,
           facet=False,
           index=True,
-          optional=True,
+          optional=False,
           default_sorting_field=False,
           infix=False):
     return PydanticField(default=default, default_factory=default_factory, facet=facet, index=index, optional=optional,
